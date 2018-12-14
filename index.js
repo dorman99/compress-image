@@ -3,13 +3,36 @@ const multer = require("multer");
 const upload_middlware = multer();
 const sharp = require("sharp");
 const app = express();
-const S3 = require("aws-sdk");
+const Aws = require("aws-sdk");
 const PORT = 3001 //port assign
 const async = require("async");
 
 
+const uploadToS3 = (files,callback) => {
+    let s3Bucket = new Aws.S3({
+        accessKeyId: "IAM-Acceskey",
+        secretAccessKey: "IAM-SECRETKEY",
+        params: {Bucket: "bucketName"},
+
+    })
+    s3Bucket.createBucket({ACL:"public-read"},function() {
+        async.each(files,function(file,cb) {
+            let params = {
+                Key : file.name+".jpeg",
+                Body: file.buffer
+            }
+            s3Bucket.upload(params,function(err,data) {
+                if(err) cb(err);
+                cb(null);
+            })
+        },err=> {
+            if(err) callback(err);
+            callback(null,"success");
+        })
+    })
+} 
+
 app.post('/upload',upload_middlware.single("image"),function(req,res) {
-    console.log(req.file)
     let imageBuff = req.file.buffer;
     async.parallel({
         small: function(callback) {
@@ -19,11 +42,15 @@ app.post('/upload',upload_middlware.single("image"),function(req,res) {
                     sharp(imageBuff).jpeg({ //quality change
                         quality: 75
                     }).resize(240) //witdh == 800 , height == auto
-                    .toFile('small.jpeg')
-                    .then(info => {
-                        callback(null,info)
+                    .toBuffer((err,buffer)=> {
+                        if(err)callback(err);
+                        callback(null,{name:"small",buffer:buffer})
                     })
-                    .catch(err => callback(err))
+                    // .toFile('small.jpeg')
+                    // .then(info => {
+                    //     callback(null,info)
+                    // })
+                    // .catch(err => callback(err))
                 }
                 else if(metaFile.width == metaFile.height) {
                     sharp(imageBuff).jpeg({ //quality change
@@ -53,11 +80,15 @@ app.post('/upload',upload_middlware.single("image"),function(req,res) {
                     sharp(imageBuff).jpeg({ //quality change
                         quality: 75
                     }).resize(480) 
-                    .toFile('medium.jpeg')
-                    .then(info => {
-                        callback(null,info)
+                    .toBuffer((err,buffer)=> {
+                        if(err)callback(err);
+                        callback(null,{name:"medium",buffer:buffer})
                     })
-                    .catch(err => callback(err))
+                    // .toFile('medium.jpeg')
+                    // .then(info => {
+                    //     callback(null,info)
+                    // })
+                    // .catch(err => callback(err))
                 }
                 else if(metaFile.width == metaFile.height) {
                     sharp(imageBuff).jpeg({ //quality change
@@ -87,11 +118,15 @@ app.post('/upload',upload_middlware.single("image"),function(req,res) {
                     sharp(imageBuff).jpeg({ //quality change
                         quality: 90
                     }).resize(800) //witdh == 800 , height == auto //pixel
-                    .toFile('large.jpeg')
-                    .then(info => {
-                        callback(null,info)
+                    .toBuffer((err,buffer)=> {
+                        if(err)callback(err);
+                        callback(null,{name:"large",buffer:buffer})
                     })
-                    .catch(err => callback(err))
+                    // .toFile('large.jpeg')
+                    // .then(info => {
+                    //     callback(null,info)
+                    // })
+                    // .catch(err => callback(err))
                 }
                 else if(metaFile.width == metaFile.height) {
                     sharp(imageBuff).jpeg({ //quality change
@@ -117,8 +152,11 @@ app.post('/upload',upload_middlware.single("image"),function(req,res) {
     },(err,files) => { //compressing file to new size
         if(err) {res.status(500).json(err)}
         else {
-            res.status(200).json({
-                files
+            uploadToS3(files,(err,result) => {
+                if(err)res.status(500).json(err);
+                res.status(200).json({
+                    files
+                })
             })
         }
     })
